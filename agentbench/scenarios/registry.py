@@ -59,6 +59,16 @@ def get_registry() -> ScenarioRegistry:
     return _registry_singleton
 
 
+def reset_registry() -> None:
+    """Reset the global registry — primarily for test isolation.
+
+    After calling this, the next ``get_registry()`` will re-discover all
+    scenarios from scratch, guaranteeing a clean slate between test runs.
+    """
+    global _registry_singleton  # noqa: PLW0603
+    _registry_singleton = None
+
+
 def _auto_discover(registry: ScenarioRegistry) -> None:
     """Walk adapter scenario sub-packages and register all BaseScenario subclasses."""
     import agentbench.adapters as adapters_pkg

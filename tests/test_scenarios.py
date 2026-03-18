@@ -1,4 +1,4 @@
-"""Tests for Phase 2+3 scenarios — base, registry, and concrete scenarios."""
+"""Tests for Phase 2+3+4 scenarios — base, registry, and concrete scenarios."""
 
 import pytest
 
@@ -14,8 +14,12 @@ from agentbench.adapters.orchestrator.adapter import OrchestratorAdapter
 from agentbench.adapters.orchestrator.scenarios.s1_bugfix import S1SoloBugfix
 from agentbench.adapters.orchestrator.scenarios.s2_feature import S2MultiFileFeature
 from agentbench.adapters.orchestrator.scenarios.s3_crosspod import S3CrossTeamEscalation
+from agentbench.adapters.tau2bench.adapter import TAU2BenchAdapter
+from agentbench.adapters.tau2bench.scenarios.s1_simple_booking import S1SimpleBooking
+from agentbench.adapters.tau2bench.scenarios.s2_multi_step_retry import S2MultiStepRetry
+from agentbench.adapters.tau2bench.scenarios.s3_human_escalation import S3HumanEscalation
 from agentbench.scenarios.base import VerificationResult, make_config
-from agentbench.scenarios.registry import ScenarioRegistry, get_registry
+from agentbench.scenarios.registry import ScenarioRegistry, get_registry, reset_registry
 from agentbench.types import AgentTrace, EscalationLabel
 
 # =========================================================================
@@ -91,7 +95,7 @@ class TestAutoDiscovery:
     def test_global_registry_discovers_scenarios(self) -> None:
         registry = get_registry()
         names = registry.list_scenarios()
-        assert len(names) >= 9  # 3 orchestrator + 3 langgraph + 3 autogen
+        assert len(names) >= 12  # 3 orchestrator + 3 langgraph + 3 autogen + 3 tau2bench
         assert "orchestrator_s1_solo_bugfix" in names
         assert "langgraph_s1_classify_route" in names
         assert "langgraph_s2_multi_agent" in names
@@ -99,6 +103,23 @@ class TestAutoDiscovery:
         assert "autogen_s1_function_call" in names
         assert "autogen_s2_multi_agent_debate" in names
         assert "autogen_s3_safety_critical" in names
+        assert "tau2_s1_simple_booking" in names
+        assert "tau2_s2_multi_step_retry" in names
+        assert "tau2_s3_human_escalation" in names
+
+    def test_reset_registry_clears_state(self) -> None:
+        """reset_registry() must clear the singleton so next get_registry() re-discovers."""
+        reg1 = get_registry()
+        count_before = len(reg1)
+        assert count_before >= 12
+
+        reset_registry()
+
+        # After reset, a fresh call must re-discover all scenarios
+        reg2 = get_registry()
+        assert len(reg2) >= 12
+        # Must be a different object (fresh instance)
+        assert reg2 is not reg1
 
 
 # =========================================================================
@@ -424,3 +445,109 @@ class TestAutoGenS3:
         assert result.checks.get("dual_escalation") is True
         assert result.checks.get("auth_files_edited") is True
         assert result.checks.get("review_fail_then_pass") is True
+
+
+# =========================================================================
+# TAU2-Bench Scenario S1
+# =========================================================================
+
+
+class TestTAU2S1:
+    def test_config(self) -> None:
+        s = S1SimpleBooking()
+        cfg = s.config
+        assert cfg.name == "tau2_s1_simple_booking"
+        assert cfg.adapter_name == "tau2bench"
+
+    def test_actions_have_5_steps(self) -> None:
+        s = S1SimpleBooking()
+        actions = s.get_actions()
+        assert len(actions) == 5
+
+    def test_full_execution(self) -> None:
+        s = S1SimpleBooking()
+        adapter = TAU2BenchAdapter()
+        adapter.setup_scenario(s.config)
+
+        for action in s.get_actions():
+            adapter.execute_turn(action)
+
+        trace = adapter.get_trace()
+        trace.success = True
+        result = s.verify(trace)
+        assert isinstance(result, VerificationResult)
+        assert result.checks.get("trace_success") is True
+        assert result.checks.get("has_tool_call") is True
+        assert result.checks.get("no_escalation") is True
+        assert result.checks.get("correct_tool") is True
+
+
+# =========================================================================
+# TAU2-Bench Scenario S2
+# =========================================================================
+
+
+class TestTAU2S2:
+    def test_config(self) -> None:
+        s = S2MultiStepRetry()
+        cfg = s.config
+        assert cfg.name == "tau2_s2_multi_step_retry"
+        assert cfg.adapter_name == "tau2bench"
+
+    def test_actions_have_8_steps(self) -> None:
+        s = S2MultiStepRetry()
+        actions = s.get_actions()
+        assert len(actions) == 8
+
+    def test_full_execution(self) -> None:
+        s = S2MultiStepRetry()
+        adapter = TAU2BenchAdapter()
+        adapter.setup_scenario(s.config)
+
+        for action in s.get_actions():
+            adapter.execute_turn(action)
+
+        trace = adapter.get_trace()
+        trace.success = True
+        result = s.verify(trace)
+        assert isinstance(result, VerificationResult)
+        assert result.checks.get("trace_success") is True
+        assert result.checks.get("multiple_tool_calls") is True
+        assert result.checks.get("has_retry") is True
+        assert result.checks.get("correct_tools") is True
+        assert result.checks.get("no_escalation") is True
+
+
+# =========================================================================
+# TAU2-Bench Scenario S3
+# =========================================================================
+
+
+class TestTAU2S3:
+    def test_config(self) -> None:
+        s = S3HumanEscalation()
+        cfg = s.config
+        assert cfg.name == "tau2_s3_human_escalation"
+        assert cfg.adapter_name == "tau2bench"
+
+    def test_actions_have_10_steps(self) -> None:
+        s = S3HumanEscalation()
+        actions = s.get_actions()
+        assert len(actions) == 10
+
+    def test_full_execution(self) -> None:
+        s = S3HumanEscalation()
+        adapter = TAU2BenchAdapter()
+        adapter.setup_scenario(s.config)
+
+        for action in s.get_actions():
+            adapter.execute_turn(action)
+
+        trace = adapter.get_trace()
+        # S3: escalation to human is the key outcome
+        result = s.verify(trace)
+        assert isinstance(result, VerificationResult)
+        assert result.checks.get("has_escalation") is True
+        assert result.checks.get("has_tool_calls") is True
+        assert result.checks.get("correct_tools") is True
+        assert result.checks.get("critical_zone_used") is True

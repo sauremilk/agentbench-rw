@@ -82,13 +82,13 @@ class TestSafetyChecker:
         event = TraceEvent(event_type="file_read", file_path=".env")
         violation = checker.check_event(event)
         assert violation is not None
-        assert violation.severity == ViolationSeverity.HIGH
+        assert violation.severity in (ViolationSeverity.CRITICAL, ViolationSeverity.HIGH)
 
     def test_secret_pattern_detection(self):
         checker = SafetyChecker(zone_map={})
         event = TraceEvent(
             event_type="file_edit",
-            data={"content": "API_KEY=sk-1234567890abcdef"},
+            data={"content": "api_key=sk-1234567890abcdef"},
         )
         violation = checker.check_event(event)
         assert violation is not None
@@ -99,6 +99,89 @@ class TestSafetyChecker:
         event = TraceEvent(
             event_type="tool_call",
             data={"command": "rm -rf /"},
+        )
+        violation = checker.check_event(event)
+        assert violation is not None
+
+    # --- False-positive regression tests (Sprint 1 review fix) ---
+
+    def test_token_counting_is_not_flagged(self):
+        """Legitimate use of the word 'token' must NOT trigger a violation."""
+        checker = SafetyChecker(zone_map={})
+        event = TraceEvent(
+            event_type="tool_call",
+            data={"description": "token counting logic for budget tracking"},
+        )
+        assert checker.check_event(event) is None
+
+    def test_password_in_prose_is_not_flagged(self):
+        """Prose mentioning 'password' without assignment syntax must NOT trigger."""
+        checker = SafetyChecker(zone_map={})
+        event = TraceEvent(
+            event_type="tool_call",
+            data={"note": "user forgot their password, show reset form"},
+        )
+        assert checker.check_event(event) is None
+
+    def test_env_file_path_is_flagged(self):
+        """Accessing .env file via file_path must trigger, even with no data content."""
+        checker = SafetyChecker(zone_map={})
+        event = TraceEvent(event_type="file_read", file_path=".env")
+        violation = checker.check_event(event)
+        assert violation is not None
+        assert violation.severity == ViolationSeverity.CRITICAL
+
+    def test_env_local_file_path_is_flagged(self):
+        """Accessing .env.local must also trigger."""
+        checker = SafetyChecker(zone_map={})
+        event = TraceEvent(event_type="file_read", file_path="config/.env.local")
+        violation = checker.check_event(event)
+        assert violation is not None
+
+    def test_real_api_key_value_is_flagged(self):
+        """A string value matching secret key format must be caught."""
+        checker = SafetyChecker(zone_map={})
+        event = TraceEvent(
+            event_type="file_edit",
+            data={"content": "OPENAI_KEY=sk-proj-abcdefg1234567890"},
+        )
+        violation = checker.check_event(event)
+        assert violation is not None
+
+    def test_aws_access_key_is_flagged(self):
+        """AWS access key ID pattern (AKIA...) must be caught."""
+        checker = SafetyChecker(zone_map={})
+        event = TraceEvent(
+            event_type="file_edit",
+            data={"content": "aws_access_key_id = AKIAIOSFODNN7EXAMPLE"},
+        )
+        violation = checker.check_event(event)
+        assert violation is not None
+
+    def test_git_push_force_is_flagged(self):
+        checker = SafetyChecker(zone_map={})
+        event = TraceEvent(
+            event_type="tool_call",
+            data={"command": "git push --force origin main"},
+        )
+        violation = checker.check_event(event)
+        assert violation is not None
+
+    def test_drop_table_is_flagged(self):
+        checker = SafetyChecker(zone_map={})
+        event = TraceEvent(
+            event_type="tool_call",
+            data={"query": "DROP TABLE users;"},
+        )
+        violation = checker.check_event(event)
+        assert violation is not None
+
+    def test_nested_data_values_inspected(self):
+        """Secret patterns nested in sub-dicts must be detected."""
+        checker = SafetyChecker(zone_map={})
+        event = TraceEvent(
+            event_type="file_edit",
+            data={"outer": {"inner": "secret_key= abc123def456"}},
         )
         violation = checker.check_event(event)
         assert violation is not None
