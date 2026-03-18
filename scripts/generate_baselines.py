@@ -13,6 +13,7 @@ from pathlib import Path
 from agentbench.adapters.autogen.adapter import AutoGenAdapter
 from agentbench.adapters.langgraph.adapter import LangGraphAdapter
 from agentbench.adapters.orchestrator.adapter import OrchestratorAdapter
+from agentbench.adapters.tau2bench.adapter import TAU2BenchAdapter
 from agentbench.runner import run_scenario
 from agentbench.scenarios.registry import get_registry
 
@@ -26,6 +27,9 @@ SCENARIO_ADAPTERS: dict[str, type] = {
     "autogen_s1_function_call": AutoGenAdapter,
     "autogen_s2_multi_agent_debate": AutoGenAdapter,
     "autogen_s3_safety_critical": AutoGenAdapter,
+    "tau2_s1_simple_booking": TAU2BenchAdapter,
+    "tau2_s2_multi_step_retry": TAU2BenchAdapter,
+    "tau2_s3_human_escalation": TAU2BenchAdapter,
 }
 
 

@@ -29,7 +29,7 @@ def main(argv: list[str] | None = None) -> int:
 
     # ── run ──────────────────────────────────────────────────────────────
     p_run = sub.add_parser("run", help="Run a scenario (live or replay)")
-    p_run.add_argument("--adapter", required=True, choices=["orchestrator", "langgraph", "autogen"])
+    p_run.add_argument("--adapter", required=True, choices=["orchestrator", "langgraph", "autogen", "tau2bench"])
     p_run.add_argument("--scenario", required=True, help="Scenario name (e.g. s1_solo_bugfix)")
     p_run.add_argument("--mode", default="live", choices=["live", "replay"])
     p_run.add_argument("--trace-file", type=Path, help="Trace file (required for replay mode)")
@@ -64,6 +64,17 @@ def main(argv: list[str] | None = None) -> int:
     p_list.add_argument("--scenarios", action="store_true")
     p_list.add_argument("--policies", action="store_true")
 
+    # ── leaderboard ──────────────────────────────────────────────────────
+    p_lb = sub.add_parser("leaderboard", help="Generate cross-adapter leaderboard from baselines")
+    p_lb.add_argument(
+        "--traces-dir",
+        type=Path,
+        default=Path("results/baseline"),
+        help="Directory containing .jsonl baseline traces",
+    )
+    p_lb.add_argument("--output", type=Path, default=Path("docs/LEADERBOARD.md"), help="Output Markdown file")
+    p_lb.add_argument("--radar", action="store_true", help="Generate radar SVGs per adapter")
+
     args = parser.parse_args(argv)
 
     handlers = {
@@ -72,6 +83,7 @@ def main(argv: list[str] | None = None) -> int:
         "report": _cmd_report,
         "optimize": _cmd_optimize,
         "list": _cmd_list,
+        "leaderboard": _cmd_leaderboard,
     }
     return handlers[args.command](args)
 
@@ -239,12 +251,98 @@ def _cmd_list(args: argparse.Namespace) -> int:
         print("Adapters:")
         print("  - orchestrator")
         print("  - langgraph")
+        print("  - autogen")
+        print("  - tau2bench")
 
     if args.policies:
         from agentbench.policies.escalation import NullPolicy, RuleBasedPolicy, TunedPolicy
 
         for p in [NullPolicy(), RuleBasedPolicy(), TunedPolicy()]:
             print(f"  - {p.name}")
+
+    return 0
+
+
+def _cmd_leaderboard(args: argparse.Namespace) -> int:
+    from agentbench.report.leaderboard import write_leaderboard
+    from agentbench.runner import RunResult, run_scenario
+    from agentbench.scenarios.registry import get_registry
+    from agentbench.traces import load_trace
+    from agentbench.types import RunMode
+
+    traces_dir: Path = args.traces_dir
+    if not traces_dir.exists():
+        print(f"Traces directory not found: {traces_dir}", file=sys.stderr)
+        return 1
+
+    trace_paths = sorted(traces_dir.glob("*.jsonl"))
+    if not trace_paths:
+        print(f"No .jsonl traces found in {traces_dir}", file=sys.stderr)
+        return 1
+
+    registry = get_registry()
+    all_results: list[RunResult] = []
+
+    for tp in trace_paths:
+        trace = load_trace(tp)
+        scenario_name = trace.scenario_name
+        if scenario_name not in registry:
+            continue
+        scenario = registry.get(scenario_name)
+        adapter = _make_adapter(trace.adapter_name)
+        r = run_scenario(
+            adapter,
+            scenario,
+            mode=RunMode.REPLAY,
+            trace_file=tp,
+        )
+        all_results.append(r)
+
+    # Deduplicate: keep only the latest trace per (adapter, scenario) pair.
+    # trace_paths are sorted chronologically, so last wins.
+    seen: dict[tuple[str, str], RunResult] = {}
+    for r in all_results:
+        seen[(r.adapter_name, r.scenario_name)] = r
+    results: list[RunResult] = list(seen.values())
+
+    if not results:
+        print("No valid traces matched registered scenarios.", file=sys.stderr)
+        return 1
+
+    output_path: Path = args.output
+    write_leaderboard(results, output_path)
+    print(f"Leaderboard: {output_path} ({len(results)} scenarios, {len({r.adapter_name for r in results})} adapters)")
+
+    if args.radar:
+        from agentbench.report.radar import render_radar_svg
+
+        radar_dir = output_path.parent / "radar"
+        radar_dir.mkdir(parents=True, exist_ok=True)
+
+        from collections import defaultdict
+
+        groups: dict[str, list[RunResult]] = defaultdict(list)
+        for r in results:
+            groups[r.adapter_name].append(r)
+
+        palette = ["#4A90D9", "#E85D3A", "#5BC236", "#9B59B6"]
+        for i, (adapter, runs) in enumerate(sorted(groups.items())):
+            dim_totals: dict[str, float] = defaultdict(float)
+            dim_counts: dict[str, int] = defaultdict(int)
+            for r in runs:
+                for d in r.eval_result.dimensions:
+                    dim_totals[d.name] += d.raw_score
+                    dim_counts[d.name] += 1
+            scores = {k: dim_totals[k] / dim_counts[k] for k in dim_totals}
+            avg = sum(r.composite_score for r in runs) / len(runs)
+            svg = render_radar_svg(
+                scores,
+                title=f"{adapter} — Avg {avg:.0f}/100",
+                color=palette[i % len(palette)],
+            )
+            svg_path = radar_dir / f"radar_{adapter}.svg"
+            svg_path.write_text(svg, encoding="utf-8")
+            print(f"  Radar: {svg_path}")
 
     return 0
 
@@ -257,11 +355,13 @@ def _make_adapter(name: str) -> BaseAdapter:
     from agentbench.adapters.autogen.adapter import AutoGenAdapter
     from agentbench.adapters.langgraph.adapter import LangGraphAdapter
     from agentbench.adapters.orchestrator.adapter import OrchestratorAdapter
+    from agentbench.adapters.tau2bench.adapter import TAU2BenchAdapter
 
     adapters: dict[str, type[BaseAdapter]] = {
         "orchestrator": OrchestratorAdapter,
         "langgraph": LangGraphAdapter,
         "autogen": AutoGenAdapter,
+        "tau2bench": TAU2BenchAdapter,
     }
     if name not in adapters:
         msg = f"Unknown adapter: {name!r}"

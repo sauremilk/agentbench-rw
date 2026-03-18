@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" width="400" height="400">
+<title>orchestrator — Avg 87/100</title>
+<rect width="400" height="400" fill="white"/>
+<circle cx="200.0" cy="200.0" r="37.5" fill="none" stroke="#E0E0E0" stroke-width="0.5"/>
+<circle cx="200.0" cy="200.0" r="75.0" fill="none" stroke="#E0E0E0" stroke-width="0.5"/>
+<circle cx="200.0" cy="200.0" r="112.5" fill="none" stroke="#E0E0E0" stroke-width="0.5"/>
+<circle cx="200.0" cy="200.0" r="150.0" fill="none" stroke="#E0E0E0" stroke-width="0.5"/>
+<line x1="200.0" y1="200.0" x2="200.0" y2="50.0" stroke="#E0E0E0" stroke-width="0.5"/>
+<line x1="200.0" y1="200.0" x2="317.3" y2="106.5" stroke="#E0E0E0" stroke-width="0.5"/>
+<line x1="200.0" y1="200.0" x2="346.2" y2="233.4" stroke="#E0E0E0" stroke-width="0.5"/>
+<line x1="200.0" y1="200.0" x2="265.1" y2="335.1" stroke="#E0E0E0" stroke-width="0.5"/>
+<line x1="200.0" y1="200.0" x2="134.9" y2="335.1" stroke="#E0E0E0" stroke-width="0.5"/>
+<line x1="200.0" y1="200.0" x2="53.8" y2="233.4" stroke="#E0E0E0" stroke-width="0.5"/>
+<line x1="200.0" y1="200.0" x2="82.7" y2="106.5" stroke="#E0E0E0" stroke-width="0.5"/>
+<polygon points="200.0,200.0 317.3,106.5 200.0,200.0 200.0,200.0 168.2,266.1 53.8,233.4 82.7,106.5" fill="#5BC236" fill-opacity="0.25" stroke="#5BC236" stroke-width="2"/>
+<circle cx="200.0" cy="200.0" r="4" fill="#5BC236"/>
+<circle cx="317.3" cy="106.5" r="4" fill="#5BC236"/>
+<circle cx="200.0" cy="200.0" r="4" fill="#5BC236"/>
+<circle cx="200.0" cy="200.0" r="4" fill="#5BC236"/>
+<circle cx="168.2" cy="266.1" r="4" fill="#5BC236"/>
+<circle cx="53.8" cy="233.4" r="4" fill="#5BC236"/>
+<circle cx="82.7" cy="106.5" r="4" fill="#5BC236"/>
+<text x="200.0" y="28.0" text-anchor="middle" font-family="system-ui, sans-serif" font-size="11" fill="#333">Completion (0%)</text>
+<text x="334.5" y="92.8" text-anchor="start" font-family="system-ui, sans-serif" font-size="11" fill="#333">Latency (100%)</text>
+<text x="367.7" y="238.3" text-anchor="start" font-family="system-ui, sans-serif" font-size="11" fill="#333">Cost (0%)</text>
+<text x="274.6" y="355.0" text-anchor="start" font-family="system-ui, sans-serif" font-size="11" fill="#333">Safety (0%)</text>
+<text x="125.4" y="355.0" text-anchor="end" font-family="system-ui, sans-serif" font-size="11" fill="#333">Containment (49%)</text>
+<text x="32.3" y="238.3" text-anchor="end" font-family="system-ui, sans-serif" font-size="11" fill="#333">Reliability (100%)</text>
+<text x="65.5" y="92.8" text-anchor="end" font-family="system-ui, sans-serif" font-size="11" fill="#333">Autonomy (100%)</text>
+<text x="200.0" y="25" text-anchor="middle" font-family="system-ui, sans-serif" font-size="14" font-weight="bold" fill="#111">orchestrator — Avg 87/100</text>
+</svg>

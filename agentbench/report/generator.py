@@ -9,14 +9,15 @@ Supports:
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 from agentbench.report.radar import render_radar_svg
-from agentbench.types import DimensionResult, EvalResult
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from agentbench.runner import RunResult
+    from agentbench.types import DimensionResult, EvalResult
 
 
 def generate_markdown_report(result: EvalResult) -> str:
@@ -361,7 +362,7 @@ def generate_comparison_with_radar(
     palette = colors or ["#4A90D9", "#E85D3A", "#5BC236", "#9B59B6", "#F4A623"]
 
     svg_paths: list[Path] = []
-    for i, (result, tag) in enumerate(zip(results, tags)):
+    for i, (result, tag) in enumerate(zip(results, tags, strict=False)):
         color = palette[i % len(palette)]
         scores = {d.name: d.raw_score for d in result.eval_result.dimensions}
         svg = render_radar_svg(
@@ -375,9 +376,104 @@ def generate_comparison_with_radar(
 
     md = generate_comparison_report(results, title=title, labels=tags)
     # Embed radar references
-    radar_refs = "\n".join(f"![{tag}]({p.name})" for tag, p in zip(tags, svg_paths))
+    radar_refs = "\n".join(f"![{tag}]({p.name})" for tag, p in zip(tags, svg_paths, strict=False))
     md = f"{radar_refs}\n\n{md}"
 
     md_path = output_dir / "comparison_report.md"
     md_path.write_text(md, encoding="utf-8")
     return md_path, svg_paths
+
+
+# ---------------------------------------------------------------------------
+# Multi-adapter comparison (cross-adapter leaderboard-style)
+# ---------------------------------------------------------------------------
+
+
+def generate_multi_adapter_comparison(
+    results: list[RunResult],
+    *,
+    title: str = "Multi-Adapter Comparison",
+) -> str:
+    """Generate a Markdown table comparing multiple adapters side-by-side.
+
+    Groups results by adapter, computes average scores per adapter, and
+    displays a confusion-matrix-style containment breakdown.
+    """
+    from collections import defaultdict
+
+    groups: dict[str, list[RunResult]] = defaultdict(list)
+    for r in results:
+        groups[r.adapter_name].append(r)
+
+    adapters = sorted(groups.keys())
+    lines: list[str] = []
+    lines.append(f"# {title}")
+    lines.append("")
+    lines.append(f"**Generated:** {datetime.now(UTC).strftime('%Y-%m-%d %H:%M UTC')}")
+    lines.append(f"**Adapters:** {len(adapters)} | **Total Scenarios:** {len(results)}")
+    lines.append("")
+
+    # Summary table
+    lines.append("## Summary")
+    lines.append("")
+    lines.append("| Adapter | Scenarios | Avg Score | Grade | Pass Rate | Safety |")
+    lines.append("|---------|:---------:|:---------:|:-----:|:---------:|:------:|")
+
+    for adapter in adapters:
+        runs = groups[adapter]
+        avg = sum(r.composite_score for r in runs) / len(runs) if runs else 0
+        grade = _score_to_grade(avg)
+        passed = sum(1 for r in runs if r.passed)
+        safety = all(r.eval_result.safety_gate_passed for r in runs)
+        lines.append(
+            f"| **{adapter}** | {len(runs)} | {avg:.1f} | {grade} | {passed}/{len(runs)} | {'✅' if safety else '❌'} |"
+        )
+    lines.append("")
+
+    # Containment confusion matrix (text-based)
+    _append_confusion_matrices(lines, groups)
+
+    return "\n".join(lines)
+
+
+def _append_confusion_matrices(
+    lines: list[str],
+    groups: dict[str, list[RunResult]],
+) -> None:
+    """Append text-based confusion matrices for each adapter."""
+    lines.append("## Containment Confusion Matrix")
+    lines.append("")
+
+    for adapter in sorted(groups.keys()):
+        runs = groups[adapter]
+        tp = fp = tn = fn = 0
+        for r in runs:
+            cm = r.eval_result.containment
+            if cm:
+                tp += cm.tp
+                fp += cm.fp
+                tn += cm.tn
+                fn += cm.fn
+
+        total = tp + fp + tn + fn
+        if total == 0:
+            lines.append(f"### {adapter}")
+            lines.append("")
+            lines.append("*No containment data available.*")
+            lines.append("")
+            continue
+
+        prec = tp / (tp + fp) if (tp + fp) > 0 else 0.0
+        rec = tp / (tp + fn) if (tp + fn) > 0 else 0.0
+        f1 = 2 * prec * rec / (prec + rec) if (prec + rec) > 0 else 0.0
+
+        lines.append(f"### {adapter}")
+        lines.append("")
+        lines.append("```")
+        lines.append("                    Predicted")
+        lines.append("                 Escalate   Auto")
+        lines.append(f"  Actual Esc.  │  TP={tp:<4d}  │  FN={fn:<4d}  │")
+        lines.append(f"  Actual Auto  │  FP={fp:<4d}  │  TN={tn:<4d}  │")
+        lines.append(f"  Precision={prec:.3f}  Recall={rec:.3f}  F1={f1:.3f}")
+        lines.append("```")
+        lines.append("")
